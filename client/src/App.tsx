@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "./lib/queryClient";
+import { QueryClientProvider, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { useToast } from "@/hooks/use-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,78 +34,83 @@ import {
 // Types
 import type { FileRecord } from "@shared/schema";
 
-// Mock data for demo - todo: remove mock functionality
-const mockFiles: FileRecord[] = [
-  {
-    id: '1',
-    username: 'testuser', // Current user's file - can be deleted
-    filename: 'document_encrypted.enc',
-    originalFilename: 'My_Project_Proposal.pdf',
-    mimetype: 'application/pdf',
-    size: 2547832,
-    downloadUrl: 'https://example.com/files/1.enc',
-    uploadTimestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    salt: 'base64salt1',
-    iv: 'base64iv1',
-    kdf: 'PBKDF2',
-    iterations: 200000,
-    algorithm: 'AES-GCM',
-    version: '1.0'
-  },
-  {
-    id: '2',
-    username: 'bob',
-    filename: 'image_encrypted.enc',
-    originalFilename: 'vacation_photo.jpg',
-    mimetype: 'image/jpeg',
-    size: 1234567,
-    downloadUrl: 'https://example.com/files/2.enc',
-    uploadTimestamp: new Date(Date.now() - 5 * 60 * 60 * 1000),
-    salt: 'base64salt2',
-    iv: 'base64iv2',
-    kdf: 'PBKDF2',
-    iterations: 200000,
-    algorithm: 'AES-GCM',
-    version: '1.0'
-  },
-  {
-    id: '3',
-    username: 'testuser', // Current user's file - can be deleted
-    filename: 'video_encrypted.enc',
-    originalFilename: 'My_Presentation_Demo.mp4',
-    mimetype: 'video/mp4',
-    size: 15728640,
-    downloadUrl: 'https://example.com/files/3.enc',
-    uploadTimestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    salt: 'base64salt3',
-    iv: 'base64iv3',
-    kdf: 'PBKDF2',
-    iterations: 200000,
-    algorithm: 'AES-GCM',
-    version: '1.0'
-  },
-  {
-    id: '4',
-    username: 'alice',
-    filename: 'spreadsheet_encrypted.enc',
-    originalFilename: 'Financial_Report.xlsx',
-    mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    size: 856432,
-    downloadUrl: 'https://example.com/files/4.enc',
-    uploadTimestamp: new Date(Date.now() - 8 * 60 * 60 * 1000),
-    salt: 'base64salt4',
-    iv: 'base64iv4',
-    kdf: 'PBKDF2',
-    iterations: 200000,
-    algorithm: 'AES-GCM',
-    version: '1.0'
+// API Functions
+const fetchFiles = async (): Promise<FileRecord[]> => {
+  const response = await fetch('/api/files');
+  if (!response.ok) {
+    throw new Error('Failed to fetch files');
   }
-];
+  return response.json();
+};
+
+const uploadFile = async (fileData: any): Promise<FileRecord> => {
+  const response = await apiRequest('POST', '/api/files', fileData);
+  return response.json();
+};
+
+const downloadFileData = async (id: string) => {
+  const response = await fetch(`/api/files/${id}/download`);
+  if (!response.ok) {
+    throw new Error('Failed to download file');
+  }
+  return response.json();
+};
+
+const deleteFile = async (id: string): Promise<void> => {
+  await apiRequest('DELETE', `/api/files/${id}`);
+};
 
 function HomePage() {
   const [activeTab, setActiveTab] = useState<'upload' | 'download'>('upload');
-  const [files, setFiles] = useState<FileRecord[]>(mockFiles);
   const [currentUser, setCurrentUser] = useState<string>('testuser'); // todo: replace with actual user management
+  const queryClientInstance = useQueryClient();
+  
+  // Fetch files from API
+  const { data: files = [], isLoading: isLoadingFiles, error: filesError } = useQuery({
+    queryKey: ['/api/files'],
+    queryFn: fetchFiles,
+    refetchInterval: 5000, // Refetch every 5 seconds for real-time sync
+  });
+  
+  // Upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: uploadFile,
+    onSuccess: () => {
+      queryClientInstance.invalidateQueries({ queryKey: ['/api/files'] });
+      toast({
+        title: "File uploaded successfully!",
+        description: "Your encrypted file is now available for download.",
+      });
+    },
+    onError: (error: Error) => {
+      console.error('Upload failed:', error);
+      toast({
+        title: "Upload failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: deleteFile,
+    onSuccess: () => {
+      queryClientInstance.invalidateQueries({ queryKey: ['/api/files'] });
+      toast({
+        title: "File deleted",
+        description: "File has been permanently removed.",
+      });
+    },
+    onError: (error: Error) => {
+      console.error('Delete failed:', error);
+      toast({
+        title: "Delete failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
   const [encryptionModal, setEncryptionModal] = useState<{
     isOpen: boolean;
     mode: 'encrypt' | 'decrypt';
@@ -116,6 +122,8 @@ function HomePage() {
     isOpen: boolean;
     file: { name: string; type: string; size: number; data: Uint8Array } | null;
   }>({ isOpen: false, file: null });
+  
+  const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
 
   // Handle file selection for upload
@@ -162,32 +170,25 @@ function HomePage() {
         mimetype: encryptionModal.file.type
       };
       
-      // Package file
-      const packagedFile = packageFile(header, ciphertext);
-      
-      // Simulate upload to server - todo: replace with actual upload
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Create file record
-      const newFile: FileRecord = {
-        id: Date.now().toString(),
+      // Create file metadata for upload
+      const fileData = {
         username: encryptionModal.username,
         filename: `${encryptionModal.file.name}.enc`,
         originalFilename: encryptionModal.file.name,
         mimetype: encryptionModal.file.type,
         size: encryptionModal.file.size,
-        downloadUrl: `https://example.com/files/${Date.now()}.enc`,
-        uploadTimestamp: new Date(),
+        downloadUrl: '', // Will be set by server
         salt: header.salt,
         iv: header.iv,
         kdf: header.kdf,
         iterations: header.iterations,
         algorithm: header.algorithm,
-        version: header.version
+        version: header.version,
+        encryptedData: bytesToBase64(ciphertext)
       };
       
-      // Add to files list
-      setFiles(prev => [newFile, ...prev]);
+      // Upload to server
+      await uploadMutation.mutateAsync(fileData);
       
       // Close modal
       setEncryptionModal({ isOpen: false, mode: 'encrypt' });
@@ -198,7 +199,7 @@ function HomePage() {
       console.error('Encryption failed:', error);
       throw error;
     } finally {
-      setIsUploading(false);
+      // Loading state is handled by uploadMutation.isPending
     }
   };
 
@@ -214,12 +215,7 @@ function HomePage() {
   // Handle file deletion
   const handleDelete = async (file: FileRecord) => {
     try {
-      // Simulate delete request to server - todo: replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Remove file from local state
-      setFiles(prev => prev.filter(f => f.id !== file.id));
-      
+      await deleteMutation.mutateAsync(file.id);
       console.log('File deleted successfully:', file.originalFilename);
     } catch (error) {
       console.error('Delete failed:', error);
@@ -232,22 +228,20 @@ function HomePage() {
     if (!encryptionModal.encryptedFile) return;
 
     try {
-      // Simulate downloading encrypted file - todo: replace with actual download
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Download the encrypted file data from the server
+      const fileData = await downloadFileData(encryptionModal.encryptedFile.id);
+      const encryptedData = base64ToBytes(fileData.encryptedData);
       
-      // Mock encrypted file data for demo
-      const mockText = "This is decrypted content from the encrypted file. In a real implementation, this would be the actual file data.";
-      const mockBytes = new TextEncoder().encode(mockText);
-      
-      // For demo, we'll simulate decryption success/failure
+      // Generate key from pattern/passphrase
       const patternString = credentials.pattern 
         ? patternToString(credentials.pattern) 
         : credentials.passphrase!;
+      const salt = base64ToBytes(encryptionModal.encryptedFile.salt);
+      const key = await deriveKeyFromPattern(patternString, salt);
       
-      // Simulate pattern validation (in real app, this would attempt actual decryption)
-      if (patternString.length < 3) {
-        throw new Error('Incorrect pattern or passphrase');
-      }
+      // Decrypt the file
+      const iv = base64ToBytes(encryptionModal.encryptedFile.iv);
+      const decryptedData = await decryptFile(encryptedData, iv, key);
       
       // Close encryption modal
       setEncryptionModal({ isOpen: false, mode: 'decrypt' });
@@ -257,7 +251,7 @@ function HomePage() {
         name: encryptionModal.encryptedFile.originalFilename,
         type: encryptionModal.encryptedFile.mimetype,
         size: encryptionModal.encryptedFile.size,
-        data: mockBytes
+        data: decryptedData
       };
       
       // Open preview modal
