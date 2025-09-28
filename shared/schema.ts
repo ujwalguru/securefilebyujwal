@@ -24,6 +24,7 @@ export const files = pgTable("files", {
   iterations: integer("iterations").notNull().default(200000),
   algorithm: text("algorithm").notNull().default("AES-GCM"),
   version: text("version").notNull().default("1.0"),
+  encryptedData: text("encrypted_data").notNull(), // Base64 encoded encrypted file data
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -44,6 +45,7 @@ export const insertFileSchema = createInsertSchema(files).pick({
   iterations: true,
   algorithm: true,
   version: true,
+  encryptedData: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
