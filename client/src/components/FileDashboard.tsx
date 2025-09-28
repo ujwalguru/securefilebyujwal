@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Download, Eye, File, Image, FileText, Video, Clock, User } from 'lucide-react';
+import { Download, Eye, File, Image, FileText, Video, Clock, User, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import type { FileRecord } from '@shared/schema';
 
@@ -10,6 +11,8 @@ interface FileDashboardProps {
   files: FileRecord[];
   onDownload: (file: FileRecord) => void;
   onPreview?: (file: FileRecord) => void;
+  onDelete?: (file: FileRecord) => void;
+  currentUser?: string;
   loading?: boolean;
   className?: string;
 }
@@ -18,10 +21,17 @@ export default function FileDashboard({
   files, 
   onDownload, 
   onPreview, 
+  onDelete,
+  currentUser,
   loading = false, 
   className 
 }: FileDashboardProps) {
   const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set());
+  const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; file: FileRecord | null }>({
+    isOpen: false,
+    file: null
+  });
 
   const handleDownload = async (file: FileRecord) => {
     if (downloadingFiles.has(file.id)) return;
@@ -37,6 +47,34 @@ export default function FileDashboard({
         return newSet;
       });
     }
+  };
+
+  const handleDeleteClick = (file: FileRecord) => {
+    setDeleteDialog({ isOpen: true, file });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.file || !onDelete) return;
+    
+    const file = deleteDialog.file;
+    setDeletingFiles(prev => new Set(prev).add(file.id));
+    
+    try {
+      await onDelete(file);
+      setDeleteDialog({ isOpen: false, file: null });
+    } catch (error) {
+      console.error('Delete failed:', error);
+    } finally {
+      setDeletingFiles(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(file.id);
+        return newSet;
+      });
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ isOpen: false, file: null });
   };
 
   const getFileIcon = (mimetype: string) => {
@@ -141,6 +179,8 @@ export default function FileDashboard({
           {files.map((file, index) => {
             const IconComponent = getFileIcon(file.mimetype);
             const isDownloading = downloadingFiles.has(file.id);
+            const isDeleting = deletingFiles.has(file.id);
+            const canDelete = onDelete && currentUser && file.username === currentUser;
             const canPreview = onPreview && (
               file.mimetype.startsWith('image/') || 
               file.mimetype.startsWith('video/') || 
@@ -206,7 +246,7 @@ export default function FileDashboard({
                     variant="outline"
                     size="sm"
                     onClick={() => handleDownload(file)}
-                    disabled={isDownloading}
+                    disabled={isDownloading || isDeleting}
                     data-testid={`button-download-${file.id}`}
                   >
                     {isDownloading ? (
@@ -218,12 +258,70 @@ export default function FileDashboard({
                       {isDownloading ? 'Downloading...' : 'Download'}
                     </span>
                   </Button>
+
+                  {canDelete && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteClick(file)}
+                      disabled={isDeleting || isDownloading}
+                      className="text-destructive hover:text-destructive/80"
+                      data-testid={`button-delete-${file.id}`}
+                    >
+                      {isDeleting ? (
+                        <div className="w-4 h-4 border-2 border-destructive border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       </CardContent>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog.isOpen} onOpenChange={handleDeleteCancel}>
+        <DialogContent data-testid="delete-confirmation-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Trash2 className="w-5 h-5 text-destructive" />
+              <span>Delete File</span>
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deleteDialog.file?.originalFilename}</strong>?
+              This action cannot be undone and the file will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="space-x-2">
+            <Button
+              variant="outline"
+              onClick={handleDeleteCancel}
+              disabled={deletingFiles.has(deleteDialog.file?.id || '')}
+              data-testid="button-cancel-delete"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deletingFiles.has(deleteDialog.file?.id || '')}
+              data-testid="button-confirm-delete"
+            >
+              {deletingFiles.has(deleteDialog.file?.id || '') ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-destructive-foreground border-t-transparent rounded-full animate-spin" />
+                  <span>Deleting...</span>
+                </div>
+              ) : (
+                'Delete File'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
