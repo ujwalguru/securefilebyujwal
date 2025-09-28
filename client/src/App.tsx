@@ -37,9 +37,9 @@ import type { FileRecord } from "@shared/schema";
 const mockFiles: FileRecord[] = [
   {
     id: '1',
-    username: 'alice',
+    username: 'testuser', // Current user's file - can be deleted
     filename: 'document_encrypted.enc',
-    originalFilename: 'Project_Proposal.pdf',
+    originalFilename: 'My_Project_Proposal.pdf',
     mimetype: 'application/pdf',
     size: 2547832,
     downloadUrl: 'https://example.com/files/1.enc',
@@ -69,9 +69,9 @@ const mockFiles: FileRecord[] = [
   },
   {
     id: '3',
-    username: 'charlie',
+    username: 'testuser', // Current user's file - can be deleted
     filename: 'video_encrypted.enc',
-    originalFilename: 'presentation_demo.mp4',
+    originalFilename: 'My_Presentation_Demo.mp4',
     mimetype: 'video/mp4',
     size: 15728640,
     downloadUrl: 'https://example.com/files/3.enc',
@@ -82,12 +82,29 @@ const mockFiles: FileRecord[] = [
     iterations: 200000,
     algorithm: 'AES-GCM',
     version: '1.0'
+  },
+  {
+    id: '4',
+    username: 'alice',
+    filename: 'spreadsheet_encrypted.enc',
+    originalFilename: 'Financial_Report.xlsx',
+    mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    size: 856432,
+    downloadUrl: 'https://example.com/files/4.enc',
+    uploadTimestamp: new Date(Date.now() - 8 * 60 * 60 * 1000),
+    salt: 'base64salt4',
+    iv: 'base64iv4',
+    kdf: 'PBKDF2',
+    iterations: 200000,
+    algorithm: 'AES-GCM',
+    version: '1.0'
   }
 ];
 
 function HomePage() {
   const [activeTab, setActiveTab] = useState<'upload' | 'download'>('upload');
   const [files, setFiles] = useState<FileRecord[]>(mockFiles);
+  const [currentUser, setCurrentUser] = useState<string>('testuser'); // todo: replace with actual user management
   const [encryptionModal, setEncryptionModal] = useState<{
     isOpen: boolean;
     mode: 'encrypt' | 'decrypt';
@@ -192,6 +209,22 @@ function HomePage() {
       mode: 'decrypt',
       encryptedFile: file
     });
+  };
+
+  // Handle file deletion
+  const handleDelete = async (file: FileRecord) => {
+    try {
+      // Simulate delete request to server - todo: replace with actual API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Remove file from local state
+      setFiles(prev => prev.filter(f => f.id !== file.id));
+      
+      console.log('File deleted successfully:', file.originalFilename);
+    } catch (error) {
+      console.error('Delete failed:', error);
+      throw error;
+    }
   };
 
   // Handle decryption and download
@@ -348,6 +381,8 @@ function HomePage() {
                     files={files}
                     onDownload={handleDownload}
                     onPreview={handlePreview}
+                    onDelete={handleDelete}
+                    currentUser={currentUser}
                   />
                 </TabsContent>
               </Tabs>
