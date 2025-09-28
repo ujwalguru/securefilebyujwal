@@ -1,0 +1,73 @@
+I want you to generate a full web application (frontend + optional backend) in React + Vite + TypeScript that implements a **secure file-sharing service** with the following requirements:
+
+1. **Sender functionality**:
+   - Pick any file type (images, PDFs, videos, or any file) via file input or drag & drop.
+   - Enter a username.
+   - Draw an Android-style 3×3 pattern or optionally enter a passphrase.
+   - Derive a strong encryption key using PBKDF2WithHmacSHA256 (or Argon2 if available) with:
+     - random 16-byte salt
+     - iterations >= 200,000
+     - 256-bit key
+   - Encrypt the file using AES-GCM (12-byte IV).
+   - Create a self-contained `.enc` file containing:
+     - 4-byte header length
+     - JSON header including: version, username, salt (Base64), iv (Base64), kdf, iterations, algorithm, uploadTimestamp, filename, mimetype
+     - ciphertext bytes
+   - Upload the `.enc` file to a public host:
+     - Option A: Firebase Storage (public-read)
+     - Option B: Node.js backend + AWS S3 presigned upload
+   - Store file metadata in a shared database (Firebase Firestore or backend DB) so receivers can see the list.
+   - Show the public download URL to the sender for sharing.
+
+2. **Receiver functionality**:
+   - Display a **file list/dashboard** showing all uploaded files with columns: Username | Filename | Type | Size | Download button.
+   - Fetch file metadata from Firestore or backend database.
+   - When the receiver clicks “Download,” the `.enc` file is downloaded.
+   - Prompt for pattern/passphrase.
+   - Derive key from pattern/passphrase + salt and attempt AES-GCM decryption.
+   - If successful:
+     - Allow downloading decrypted file
+     - Preview images, videos, PDFs in browser if possible.
+   - If incorrect, show “Wrong pattern” message.
+
+3. **Frontend requirements**:
+   - Use **React + Vite + TypeScript**.
+   - **Tailwind CSS** with **dark purple theme** (#4B0082 / #6A0DAD).
+   - Modern animations:
+     - Pattern grid lines animate when drawing
+     - Hover/click animations on buttons
+     - Fade-in/out for modals, notifications, file upload progress, and table rows
+   - Responsive design (mobile-first)
+   - Table/list for files with smooth transitions when new files are uploaded.
+   - Footer at the bottom: **“Made by Ujwal Guru”**
+
+4. **Crypto utilities** (`crypto.ts`):
+   - `deriveKeyFromPattern(pattern: string, salt: Uint8Array, iter: number): Promise<CryptoKey>`
+   - `encryptFile(bytes: Uint8Array, key: CryptoKey): Promise<{iv: Uint8Array, ciphertext: Uint8Array}>`
+   - `decryptFile(ciphertext: Uint8Array, iv: Uint8Array, key: CryptoKey): Promise<Uint8Array>`
+   - `packageFile(headerJson: object, ciphertext: Uint8Array): Uint8Array`
+   - `parsePackage(fileBytes: Uint8Array): {header: any, ciphertext: Uint8Array}`
+
+5. **Backend (optional)**:
+   - Node.js + Express to generate presigned S3 URLs
+   - Store file metadata (username, filename, type, size, URL, timestamp)
+   - Frontend fetches metadata for dashboard display
+
+6. **UX & security**:
+   - Pattern/passphrase is never sent to server
+   - Warn users about weak patterns
+   - Clear error messages for network errors, wrong pattern, malformed files
+   - Support large files with progress indicators
+   - Optional encrypted thumbnails for image previews
+
+7. **Deliverables**:
+   - Full repository structure with:
+     - Frontend `/src` (React + TS)
+     - Tailwind theme configured for dark purple
+     - Animated components for pattern, file upload, and file list
+     - `crypto.ts` utilities
+     - Optional Node backend for presigned S3 URLs
+   - README with setup instructions, environment variables, and security notes
+   - Footer text: **“Made by Ujwal Guru”** displayed on all pages
+
+Please generate this full web app with working encryption/decryption, dark purple theme, animated UI, and file dashboard/list. Ensure all code is self-contained and ready to run on Replit.
